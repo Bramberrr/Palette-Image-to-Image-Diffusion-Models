@@ -1,9 +1,11 @@
 import torch.utils.data as data
 from torchvision import transforms
+from torchvision.transforms import functional as F
 from PIL import Image
 import os
 import torch
 import numpy as np
+from io import BytesIO
 
 from .util.mask import (bbox2mask, brush_stroke_mask, get_irregular_mask, random_bbox, random_cropping_bbox)
 
@@ -17,7 +19,7 @@ def is_image_file(filename):
 
 def make_dataset(dir):
     if os.path.isfile(dir):
-        images = [i for i in np.genfromtxt(dir, dtype=np.str, encoding='utf-8')]
+        images = [i for i in np.genfromtxt(dir, dtype=np.str_, encoding='utf-8')]
     else:
         images = []
         assert os.path.isdir(dir), '%s is not a valid directory' % dir
@@ -173,4 +175,74 @@ class ColorizationDataset(data.Dataset):
     def __len__(self):
         return len(self.flist)
 
+#####################################################
+class JPEGDataset(data.Dataset):
+    def __init__(self, data_root, quality=10, mode = "single", data_len=-1, image_size=[256, 256], loader=pil_loader):
+        imgs = make_dataset(data_root)
+        if data_len > 0:
+            self.imgs = imgs[:int(data_len)]
+        else:
+            self.imgs = imgs
+        self.tfs = transforms.Compose([
+                transforms.Resize((image_size[0], image_size[1])),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5,0.5, 0.5])
+        ])
+        self.loader = loader
+        self.quality = quality
+        self.mode = mode
+        self.image_size = image_size
+        self.quality_factors = np.arange(5, 31)
+        self.ori_probabilities = np.exp(-self.quality_factors / 10)
+        self.probabilities = self.ori_probabilities / self.ori_probabilities.sum()
 
+    def __getitem__(self, index):
+        ret = {}
+        path = self.imgs[index]
+        img = self.tfs(self.loader(path))
+        cond_image = self.add_jpeg_artifacts(img, self.get_quality())
+
+        ret['gt_image'] = img
+        ret['cond_image'] = cond_image
+        ret['path'] = path.rsplit("/")[-1].rsplit("\\")[-1]
+        return ret
+
+    def __len__(self):
+        return len(self.imgs)
+    
+    def get_quality(self):
+        if self.mode == "single":
+            return self.quality
+        elif self.mode == "random":
+            return np.random.choice(self.quality_factors, p=self.probabilities)
+        else:
+            raise NotImplementedError(
+                f'Quality mode {self.mode} has not been implemented.')
+        
+            
+
+    def add_jpeg_artifacts(self, img_tensor, quality=10):
+        # Normalize the image tensor to [0, 1] range
+        # img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
+        # Convert PyTorch tensor to PIL image
+        pil_img = F.to_pil_image(img_tensor)
+        
+        # Save PIL image to BytesIO object with sampled quality
+        buffer = BytesIO()
+        try:
+            pil_img.save(buffer, format="JPEG", quality=int(quality))
+        except ValueError as e:
+            print(f"Error: {e}")
+            print(f"Quality: {quality}")
+            print(f"Image tensor: {img_tensor}")
+            # Save the problematic image to disk for inspection
+            pil_img.save('debug_error_image.jpg')
+            raise
+        
+        # Load PIL image back from BytesIO object
+        pil_img_artifact = Image.open(buffer)
+        
+        # Convert PIL image back to PyTorch tensor
+        img_tensor_artifact = F.to_tensor(pil_img_artifact)
+        
+        return img_tensor_artifact

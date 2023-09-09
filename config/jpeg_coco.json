@@ -1,6 +1,6 @@
 {
-    "name": "inpainting_celebahq", // experiments name
-    "gpu_ids": [0], // gpu ids list, default is single 0
+    "name": "jpeg_coco", // experiments name
+    "gpu_ids": [1,2,3], // gpu ids list, default is single 0
     "seed" : -1, // random seed, seed <0 represents randomization not used 
     "finetune_norm": false, // find the parameters to optimize
 
@@ -17,14 +17,12 @@
     "datasets": { // train or test
         "train": { 
             "which_dataset": {  // import designated dataset using arguments 
-                "name": ["data.dataset", "InpaintDataset"], // import Dataset() class / function(not recommend) from data.dataset.py (default is [data.dataset.py])
-                // "name": ["InpaintDataset"], // import Dataset() class / function(not recommend) from data.dataset.py (default is [data.dataset.py])
+                "name": ["data.dataset", "JPEGDataset"], // import Dataset() class / function(not recommend) from data.dataset.py (default is [data.dataset.py])
                 "args":{ // arguments to initialize dataset
-                    "data_root": "/data/zxq0322/data/celeba_hq_256/flist/train.flist",
+                    "data_root": "/data/zxq0322/data/coco/images/train2017/flist/train.flist",
                     "data_len": -1,
-                    "mask_config": {
-                        "mask_mode": "hybrid"
-                    }
+                    "quality": 10,
+                    "mode": "random"
                 } 
             },
             "dataloader":{
@@ -70,7 +68,7 @@
             "name": ["models.model", "Palette"], // import Model() class / function(not recommend) from models.model.py (default is [models.model.py])
             "args": {
                 "sample_num": 8, // process of each image
-                "task": "inpainting",
+                "task": "JPEG",
                 "ema_scheduler": {
                     "ema_start": 1,
                     "ema_iter": 1,
